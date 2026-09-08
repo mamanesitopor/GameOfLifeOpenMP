@@ -1,0 +1,296 @@
+#include <iostream>
+#include <vector>
+#include <random>
+#include <chrono>
+#include <iomanip>
+#include <fstream>
+#include <omp.h>
+#include <windows.h>
+
+using namespace std;
+using namespace chrono;
+
+class GameOfLife {
+private:
+    int size;
+    vector<vector<int>> grid;
+    vector<vector<int>> nextGrid;
+
+public:
+    GameOfLife(int n, double density = 0.3) : size(n) {
+        grid.resize(size, vector<int>(size, 0));
+        nextGrid.resize(size, vector<int>(size, 0));
+
+        random_device rd;
+        mt19937 gen(rd());
+        uniform_real_distribution<> dis(0.0, 1.0);
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                grid[i][j] = (dis(gen) < density) ? 1 : 0;
+            }
+        }
+    }
+
+    int countNeighbors(int i, int j) const {
+        int count = 0;
+        for (int di = -1; di <= 1; di++) {
+            for (int dj = -1; dj <= 1; dj++) {
+                if (di == 0 && dj == 0) continue;
+                int ni = (i + di + size) % size;
+                int nj = (j + dj + size) % size;
+                count += grid[ni][nj];
+            }
+        }
+        return count;
+    }
+
+    double runBenchmark(int numThreads, int steps) {
+        omp_set_num_threads(numThreads);
+
+        auto start = high_resolution_clock::now();
+
+        for (int s = 0; s < steps; s++) {
+#pragma omp parallel for collapse(2)
+            for (int i = 0; i < size; i++) {
+                for (int j = 0; j < size; j++) {
+                    int neighbors = 0;
+                    for (int di = -1; di <= 1; di++) {
+                        for (int dj = -1; dj <= 1; dj++) {
+                            if (di == 0 && dj == 0) continue;
+                            int ni = (i + di + size) % size;
+                            int nj = (j + dj + size) % size;
+                            neighbors += grid[ni][nj];
+                        }
+                    }
+                    if (grid[i][j] == 1) {
+                        nextGrid[i][j] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
+                    }
+                    else {
+                        nextGrid[i][j] = (neighbors == 3) ? 1 : 0;
+                    }
+                }
+            }
+            grid.swap(nextGrid);
+        }
+
+        auto end = high_resolution_clock::now();
+        double totalTime = duration<double>(end - start).count();
+        return totalTime / steps * 1000;
+    }
+};
+
+int main() {
+    SetConsoleCP(1251);
+    SetConsoleOutputCP(1251);
+
+    cout << "========================================" << endl;
+    cout << "   ИГРА 'ЖИЗНЬ' - ТЕСТ ПРОИЗВОДИТЕЛЬНОСТИ" << endl;
+    cout << "========================================" << endl;
+
+    int fieldSize;
+    cout << "Введите размер поля (рекомендуется 1024-4096): ";
+    cin >> fieldSize;
+
+    int steps;
+    cout << "Введите количество шагов (рекомендуется 100-200): ";
+    cin >> steps;
+
+    cout << "\n========================================" << endl;
+    cout << "   ЗАПУСК ТЕСТА" << endl;
+    cout << "========================================" << endl;
+    cout << "Поле: " << fieldSize << "x" << fieldSize << endl;
+    cout << "Шагов: " << steps << endl;
+    cout << "----------------------------------------" << endl;
+
+    int maxThreads = omp_get_max_threads();
+    cout << "Доступно потоков: " << maxThreads << endl;
+    cout << "----------------------------------------" << endl;
+
+    vector<int> threadCounts;
+    vector<double> results;
+
+    for (int t = 1; t <= maxThreads; t *= 2) {
+        threadCounts.push_back(t);
+    }
+    if (threadCounts.back() != maxThreads) {
+        threadCounts.push_back(maxThreads);
+    }
+
+    for (int t : threadCounts) {
+        GameOfLife game(fieldSize, 0.3);
+        double time = game.runBenchmark(t, steps);
+        results.push_back(time);
+        cout << "  " << t << " потоков: " << fixed << setprecision(2) << time << " мс" << endl;
+    }
+
+    cout << "\n========================================" << endl;
+    cout << "   РЕЗУЛЬТАТЫ" << endl;
+    cout << "========================================" << endl;
+
+    cout << "threads = [";
+    for (size_t i = 0; i < threadCounts.size(); i++) {
+        cout << threadCounts[i] << (i < threadCounts.size() - 1 ? ", " : "");
+    }
+    cout << "]" << endl;
+
+    cout << "times = [";
+    for (size_t i = 0; i < results.size(); i++) {
+        cout << fixed << setprecision(2) << results[i] << (i < results.size() - 1 ? ", " : "");
+    }
+    cout << "]" << endl;
+
+    // СОЗДАЕМ HTML-ФАЙЛ С ГРАФИКОМ
+    string filename = "graph.html";
+    ofstream file(filename);
+
+    if (file.is_open()) {
+        file << R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>График производительности</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f0f0f0; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
+        h2 { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background: #4CAF50; color: white; }
+        .info { background: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        canvas { margin: 20px 0; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Производительность Game of Life</h2>
+
+    <div class="info">
+        <b>Параметры теста:</b><br>
+        Поле: )" << fieldSize << "x" << fieldSize << " | Шагов: " << steps << " | OpenMP: да" << R"(
+    </div>
+
+    <table>
+        <tr>
+            <th>Потоки</th>
+            <th>Время (мс)</th>
+            <th>Ускорение</th>
+            <th>Эффективность</th>
+        </tr>
+)";
+
+        for (size_t i = 0; i < threadCounts.size(); i++) {
+            double speedup = results[0] / results[i];
+            double efficiency = speedup / threadCounts[i] * 100;
+            file << "        <tr><td>" << threadCounts[i] << "</td><td>"
+                << fixed << setprecision(2) << results[i] << "</td><td>"
+                << fixed << setprecision(2) << speedup << "</td><td>"
+                << fixed << setprecision(1) << efficiency << "%</td></tr>\n";
+        }
+
+        file << R"(    </table>
+
+    <canvas id="chart" width="700" height="350"></canvas>
+
+    <div style="font-size:14px; color:#666;">
+        <span style="color:blue;">●</span> Время выполнения (чем меньше, тем лучше)<br>
+        <span style="color:green;">●</span> Ускорение (чем выше, тем лучше)<br>
+        <span style="color:red;">--</span> Идеальное ускорение
+    </div>
+</div>
+
+<script>
+const threads = [)";
+        for (size_t i = 0; i < threadCounts.size(); i++) {
+            file << threadCounts[i] << (i < threadCounts.size() - 1 ? ", " : "");
+        }
+        file << R"(];
+const times = [)";
+        for (size_t i = 0; i < results.size(); i++) {
+            file << fixed << setprecision(2) << results[i] << (i < results.size() - 1 ? ", " : "");
+        }
+        file << R"(];
+const speedup = times.map(t => times[0] / t);
+const ideal = threads.map(t => t);
+
+const ctx = document.getElementById('chart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: threads,
+        datasets: [
+            {
+                label: 'Время (мс)',
+                data: times,
+                borderColor: 'blue',
+                backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                tension: 0.1,
+                fill: true,
+                pointRadius: 6,
+                yAxisID: 'y'
+            },
+            {
+                label: 'Ускорение',
+                data: speedup,
+                borderColor: 'green',
+                tension: 0.1,
+                pointRadius: 6,
+                yAxisID: 'y1'
+            },
+            {
+                label: 'Идеальное ускорение',
+                data: ideal,
+                borderColor: 'red',
+                borderDash: [5, 5],
+                tension: 0.1,
+                pointRadius: 4,
+                yAxisID: 'y1'
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'top' }
+        },
+        scales: {
+            y: {
+                position: 'left',
+                title: { display: true, text: 'Время (мс)' },
+                min: 0
+            },
+            y1: {
+                position: 'right',
+                title: { display: true, text: 'Ускорение' },
+                grid: { drawOnChartArea: false },
+                min: 0
+            }
+        }
+    }
+});
+</script>
+</body>
+</html>
+)";
+        file.close();
+
+        cout << "\n========================================" << endl;
+        cout << "   ФАЙЛ СОЗДАН!" << endl;
+        cout << "========================================" << endl;
+        cout << "Файл: " << filename << endl;
+        cout << "Путь: " << __FILE__ << endl;
+        cout << "\nОткройте файл graph.html в браузере" << endl;
+        cout << "(двойной клик по файлу)" << endl;
+    }
+    else {
+        cout << "\nОШИБКА: Не удалось создать файл!" << endl;
+        cout << "Проверьте, есть ли права на запись в папке." << endl;
+    }
+
+    cout << "\nПрограмма завершена. Нажмите Enter для выхода...";
+    cin.ignore();
+    cin.get();
+
+    return 0;
+}
