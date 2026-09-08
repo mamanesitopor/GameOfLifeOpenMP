@@ -51,7 +51,7 @@ public:
         auto start = high_resolution_clock::now();
 
         for (int s = 0; s < steps; s++) {
-#pragma omp parallel for collapse(2)
+            #pragma omp parallel for
             for (int i = 0; i < size; i++) {
                 for (int j = 0; j < size; j++) {
                     int neighbors = 0;
@@ -84,28 +84,19 @@ int main() {
     SetConsoleCP(1251);
     SetConsoleOutputCP(1251);
 
-    cout << "========================================" << endl;
-    cout << "   ИГРА 'ЖИЗНЬ' - ТЕСТ ПРОИЗВОДИТЕЛЬНОСТИ" << endl;
-    cout << "========================================" << endl;
-
     int fieldSize;
-    cout << "Введите размер поля (рекомендуется 1024-4096): ";
+    cout << "Введите размер поля : ";
     cin >> fieldSize;
 
     int steps;
-    cout << "Введите количество шагов (рекомендуется 100-200): ";
+    cout << "Введите количество шагов : ";
     cin >> steps;
 
-    cout << "\n========================================" << endl;
-    cout << "   ЗАПУСК ТЕСТА" << endl;
-    cout << "========================================" << endl;
+    cout << "   Тест" << endl;
     cout << "Поле: " << fieldSize << "x" << fieldSize << endl;
     cout << "Шагов: " << steps << endl;
-    cout << "----------------------------------------" << endl;
-
     int maxThreads = omp_get_max_threads();
     cout << "Доступно потоков: " << maxThreads << endl;
-    cout << "----------------------------------------" << endl;
 
     vector<int> threadCounts;
     vector<double> results;
@@ -124,9 +115,7 @@ int main() {
         cout << "  " << t << " потоков: " << fixed << setprecision(2) << time << " мс" << endl;
     }
 
-    cout << "\n========================================" << endl;
-    cout << "   РЕЗУЛЬТАТЫ" << endl;
-    cout << "========================================" << endl;
+    cout << "   Результаты" << endl;
 
     cout << "threads = [";
     for (size_t i = 0; i < threadCounts.size(); i++) {
@@ -140,7 +129,6 @@ int main() {
     }
     cout << "]" << endl;
 
-    // СОЗДАЕМ HTML-ФАЙЛ С ГРАФИКОМ
     string filename = "graph.html";
     ofstream file(filename);
 
@@ -194,8 +182,8 @@ int main() {
     <canvas id="chart" width="700" height="350"></canvas>
 
     <div style="font-size:14px; color:#666;">
-        <span style="color:blue;">●</span> Время выполнения (чем меньше, тем лучше)<br>
-        <span style="color:green;">●</span> Ускорение (чем выше, тем лучше)<br>
+        <span style="color:blue;">*</span> Время выполнения (чем меньше, тем лучше)<br>
+        <span style="color:green;">*</span> Ускорение (чем выше, тем лучше)<br>
         <span style="color:red;">--</span> Идеальное ускорение
     </div>
 </div>
@@ -274,21 +262,8 @@ new Chart(ctx, {
 </html>
 )";
         file.close();
-
-        cout << "\n========================================" << endl;
-        cout << "   ФАЙЛ СОЗДАН!" << endl;
-        cout << "========================================" << endl;
-        cout << "Файл: " << filename << endl;
-        cout << "Путь: " << __FILE__ << endl;
-        cout << "\nОткройте файл graph.html в браузере" << endl;
-        cout << "(двойной клик по файлу)" << endl;
-    }
-    else {
-        cout << "\nОШИБКА: Не удалось создать файл!" << endl;
-        cout << "Проверьте, есть ли права на запись в папке." << endl;
     }
 
-    cout << "\nПрограмма завершена. Нажмите Enter для выхода...";
     cin.ignore();
     cin.get();
 
