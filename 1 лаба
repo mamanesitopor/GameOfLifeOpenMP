@@ -17,9 +17,17 @@ private:
     vector<vector<int>> nextGrid;
 
 public:
-    GameOfLife(int n, double density = 0.3) : size(n) {
+    GameOfLife(int n) : size(n) {
         grid.resize(size, vector<int>(size, 0));
         nextGrid.resize(size, vector<int>(size, 0));
+    }
+
+    void randomInit(double density = 0.3) {
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                grid[i][j] = 0;
+            }
+        }
 
         random_device rd;
         mt19937 gen(rd());
@@ -29,6 +37,73 @@ public:
             for (int j = 0; j < size; j++) {
                 grid[i][j] = (dis(gen) < density) ? 1 : 0;
             }
+        }
+    }
+
+    void manualInit() {
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                grid[i][j] = 0;
+            }
+        }
+
+        cout << "Введите координаты живых клеток (строка столбец)." << endl;
+        cout << "Введите -1 -1 для завершения ввода." << endl;
+
+        int x, y;
+        while (true) {
+            cout << "Клетка: ";
+            cin >> x >> y;
+
+            if (x == -1 && y == -1) break;
+
+            if (x >= 0 && x < size && y >= 0 && y < size) {
+                grid[x][y] = 1;
+            }
+            else {
+                cout << "Ошибка: координаты должны быть в диапазоне [0, "
+                     << (size - 1) << "]" << endl;
+            }
+        }
+
+        long long alive = countAlive();
+        cout << "Живых клеток: " << alive << endl;
+    }
+
+    void placeGlider(int x, int y) {
+        if (x + 2 < size && y + 2 < size) {
+            grid[x][y + 1] = 1;
+            grid[x + 1][y + 2] = 1;
+            grid[x + 2][y] = 1;
+            grid[x + 2][y + 1] = 1;
+            grid[x + 2][y + 2] = 1;
+        }
+    }
+
+    void placeBlinker(int x, int y) {
+        if (x < size && y + 2 < size) {
+            grid[x][y] = 1;
+            grid[x][y + 1] = 1;
+            grid[x][y + 2] = 1;
+        }
+    }
+
+    void placeBlock(int x, int y) {
+        if (x + 1 < size && y + 1 < size) {
+            grid[x][y] = 1;
+            grid[x][y + 1] = 1;
+            grid[x + 1][y] = 1;
+            grid[x + 1][y + 1] = 1;
+        }
+    }
+
+    void printGrid(int maxSize = 40) {
+        int n = min(maxSize, size);
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                cout << (grid[i][j] ? "##" : "  ");
+            }
+            cout << endl;
         }
     }
 
@@ -45,44 +120,66 @@ public:
         return count;
     }
 
+    void step() {
+        #pragma omp parallel for
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                int neighbors = 0;
+                for (int di = -1; di <= 1; di++) {
+                    for (int dj = -1; dj <= 1; dj++) {
+                        if (di == 0 && dj == 0) continue;
+                        int ni = (i + di + size) % size;
+                        int nj = (j + dj + size) % size;
+                        neighbors += grid[ni][nj];
+                    }
+                }
+                if (grid[i][j] == 1) {
+                    nextGrid[i][j] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
+                }
+                else {
+                    nextGrid[i][j] = (neighbors == 3) ? 1 : 0;
+                }
+            }
+        }
+        grid.swap(nextGrid);
+    }
+
     double runBenchmark(int numThreads, int steps) {
         omp_set_num_threads(numThreads);
 
         auto start = high_resolution_clock::now();
 
         for (int s = 0; s < steps; s++) {
-            #pragma omp parallel for
-            for (int i = 0; i < size; i++) {
-                for (int j = 0; j < size; j++) {
-                    int neighbors = 0;
-                    for (int di = -1; di <= 1; di++) {
-                        for (int dj = -1; dj <= 1; dj++) {
-                            if (di == 0 && dj == 0) continue;
-                            int ni = (i + di + size) % size;
-                            int nj = (j + dj + size) % size;
-                            neighbors += grid[ni][nj];
-                        }
-                    }
-                    if (grid[i][j] == 1) {
-                        nextGrid[i][j] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
-                    }
-                    else {
-                        nextGrid[i][j] = (neighbors == 3) ? 1 : 0;
-                    }
-                }
-            }
-            grid.swap(nextGrid);
+            step();
         }
 
         auto end = high_resolution_clock::now();
         double totalTime = duration<double>(end - start).count();
         return totalTime / steps * 1000;
     }
+
+    long long countAlive() const {
+        long long alive = 0;
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                alive += grid[i][j];
+            }
+        }
+        return alive;
+    }
 };
 
 int main() {
     SetConsoleCP(1251);
     SetConsoleOutputCP(1251);
+
+    cout << "Выберите режим:" << endl;
+    cout << "  1. Бенчмарк (случайная инициализация)" << endl;
+    cout << "  2. Бенчмарк (ручной ввод)" << endl;
+    cout << "Выбор: ";
+
+    int mode;
+    cin >> mode;
 
     int fieldSize;
     cout << "Введите размер поля : ";
@@ -108,8 +205,15 @@ int main() {
         threadCounts.push_back(maxThreads);
     }
 
+    if (mode == 2) {
+        GameOfLife tempGame(fieldSize);
+        tempGame.manualInit();
+        cout << "Ввод выполнен. Начинается тестирование." << endl;
+    }
+
     for (int t : threadCounts) {
         GameOfLife game(fieldSize, 0.3);
+        game.randomInit(0.3);
         double time = game.runBenchmark(t, steps);
         results.push_back(time);
         cout << "  " << t << " потоков: " << fixed << setprecision(2) << time << " мс" << endl;
@@ -268,4 +372,4 @@ new Chart(ctx, {
     cin.get();
 
     return 0;
-}
+} 
