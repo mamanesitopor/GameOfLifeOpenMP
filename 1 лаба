@@ -62,7 +62,7 @@ public:
             }
             else {
                 cout << "Ошибка: координаты должны быть в диапазоне [0, "
-                     << (size - 1) << "]" << endl;
+                    << (size - 1) << "]" << endl;
             }
         }
 
@@ -121,7 +121,7 @@ public:
     }
 
     void step() {
-        #pragma omp parallel for
+#pragma omp parallel for
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 int neighbors = 0;
@@ -212,7 +212,7 @@ int main() {
     }
 
     for (int t : threadCounts) {
-        GameOfLife game(fieldSize, 0.3);
+        GameOfLife game(fieldSize);
         game.randomInit(0.3);
         double time = game.runBenchmark(t, steps);
         results.push_back(time);
@@ -372,4 +372,4 @@ new Chart(ctx, {
     cin.get();
 
     return 0;
-} 
+}
